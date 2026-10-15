@@ -1059,3 +1059,141 @@ function render3D(dt) {
   // ---- chase camera ----
   let da = ((T.a - camA + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; camA += da * (1 - Math.exp(-4.2 * dt));
   const d = 9.2 + T.speed * .07, hgt = 3.7 + T.speed * .03, sx = shake ? (Math.random() - .5) * shake * .5 : 0, sy = shake ? (Math.random() - .5) * shake * .4 : 0;
+
+  // Finish the 3D frame: chase camera, traffic, passengers and HUD.
+  camera.position.set(T.x - Math.cos(camA) * d, hgt, T.y - Math.sin(camA) * d);
+  camera.lookAt(T.x + Math.cos(T.a) * 4, 1.1, T.y + Math.sin(T.a) * 4);
+  updateVehicles();
+
+  for (let i = 0; i < tramG.length; i++) {
+    const tr = trams[i], p = at(tram, tr.s);
+    tramG[i].position.set(p.x, GY, p.y);
+    tramG[i].rotation.y = -(p.a + (tr.dir < 0 ? Math.PI : 0));
+  }
+
+  for (const w of P.waiting) {
+    let g = paxMap.get(w);
+    if (!g) { g = makePax(); paxMap.set(w, g); scene.add(g); }
+    g.position.set(w.x, GY, w.y);
+    g.rotation.y = -Math.atan2(T.y - w.y, T.x - w.x);
+    const arms = g.userData.arms || [];
+    if (arms[0]) arms[0].rotation.z = Math.sin(simT * 3 + w.ph) * .08;
+    if (arms[1]) arms[1].rotation.z = -.85 + Math.sin(simT * 3 + w.ph) * .08;
+    if (g.userData.ring) g.userData.ring.material.opacity = .45 + .25 * Math.sin(simT * 3 + w.ph);
+  }
+  for (const [w, g] of paxMap) {
+    if (!P.waiting.includes(w)) { scene.remove(g); paxMap.delete(w); }
+  }
+  destG.visible = !!(P.state === 'riding' && P.zone);
+  if (destG.visible) destG.position.set(P.zone.x, 0, P.zone.y);
+  guide.visible = !!(P.state === 'riding' && P.zone);
+  if (guide.visible) {
+    guide.position.set(P.zone.x, 4 + Math.sin(simT * 3) * .6, P.zone.y);
+    guide.rotation.y = -Math.atan2(P.zone.y - T.y, P.zone.x - T.x);
+  }
+  for (const s of lmLabels) s.quaternion.copy(camera.quaternion);
+
+  $('spdv').textContent = nf0.format(Math.round(T.speed * 3.6));
+  $('fare').textContent = nf1.format(P.state === 'riding' ? fare() : M.base);
+  $('km').textContent = nf2.format(M.dist / 1000) + ' كم';
+  $('wait').textContent = 'انتظار ' + nf1.format(M.wait / 60) + ' د';
+  $('mny').textContent = nf0.format(money);
+  $('rate').textContent = rating == null ? '—' : nf1.format(rating) + '/5';
+  $('clock').textContent = nf0.format(Math.floor(hours)) + ':' + String(Math.floor((hours % 1) * 60)).padStart(2, '0');
+
+  if (P.state === 'riding' && P.dest && P.zone) {
+    $('gps').hidden = false;
+    $('gname').textContent = P.dest.name;
+    $('gdist').textContent = nf0.format(Math.hypot(P.zone.x - T.x, P.zone.y - T.y)) + ' م';
+    $('garrow').style.transform = 'rotate(' + ((Math.atan2(P.zone.y - T.y, P.zone.x - T.x) - T.a) * 180 / Math.PI) + 'deg)';
+  } else {
+    $('gps').hidden = true;
+  }
+
+  // Simple minimap centered on the taxi.
+  mctx.clearRect(0, 0, mini.width, mini.height);
+  mctx.fillStyle = '#12323a'; mctx.fillRect(0, 0, mini.width, mini.height);
+  mctx.save(); mctx.translate(mini.width / 2 - T.x * .11, mini.height / 2 - T.y * .11); mctx.scale(.11, .11);
+  mctx.lineCap = 'round'; mctx.lineJoin = 'round';
+  for (const [width, path] of roadPaths) {
+    mctx.strokeStyle = width >= 20 ? '#d0c6a8' : '#65747a';
+    mctx.lineWidth = Math.max(2, width * .35); mctx.stroke(path);
+  }
+  mctx.fillStyle = '#f5b800';
+  for (const w of P.waiting) { mctx.beginPath(); mctx.arc(w.x, w.y, 14, 0, Math.PI * 2); mctx.fill(); }
+  mctx.fillStyle = '#5fd08a';
+  if (P.zone) { mctx.beginPath(); mctx.arc(P.zone.x, P.zone.y, 18, 0, Math.PI * 2); mctx.fill(); }
+  mctx.restore();
+  mctx.save(); mctx.translate(mini.width / 2, mini.height / 2); mctx.rotate(-T.a);
+  mctx.fillStyle = '#f5b800'; mctx.beginPath(); mctx.moveTo(0, -9); mctx.lineTo(6, 7); mctx.lineTo(0, 4); mctx.lineTo(-6, 7); mctx.closePath(); mctx.fill(); mctx.restore();
+
+  renderer.render(scene, camera);
+}
+
+// Main loop must run continuously so the scene is drawn before and after starting.
+function gameLoop(now) {
+  requestAnimationFrame(gameLoop);
+  const dt = last ? Math.min((now - last) / 1000, .05) : 0;
+  last = now;
+  if (running && dt > 0) update(dt);
+  try { render3D(dt); } catch (err) {
+    console.error('Render error:', err);
+    $('hint').textContent = 'حصل خطأ في الرسم؛ جرّب تحديث الصفحة';
+  }
+}
+requestAnimationFrame(gameLoop);
+
+// Start button: hide the overlay and enable driving.
+$('go').addEventListener('click', async () => {
+  $('start').hidden = true;
+  $('start').style.display = 'none';
+  running = true;
+  if (!AC) audioInit();
+  if (AC && AC.state === 'suspended') { try { await AC.resume(); } catch (_) {} }
+  $('hint').textContent = 'اتحرك بالبنزين ودوّر على زبون';
+});
+
+// Touch controls support press-and-hold on mobile.
+document.querySelectorAll('[data-k]').forEach(btn => {
+  const k = btn.dataset.k;
+  const down = e => {
+    e.preventDefault();
+    if (k === 'rev') { T.rev = !T.rev; btn.classList.toggle('on', T.rev); return; }
+    keys[k] = true; btn.classList.add('on');
+    try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+  };
+  const up = e => {
+    if (k === 'rev') return;
+    keys[k] = false; btn.classList.remove('on');
+  };
+  btn.addEventListener('pointerdown', down);
+  btn.addEventListener('pointerup', up);
+  btn.addEventListener('pointercancel', up);
+  btn.addEventListener('lostpointercapture', up);
+  btn.addEventListener('contextmenu', e => e.preventDefault());
+});
+
+const keyMap = {
+  ArrowUp: 'gas', KeyW: 'gas', ArrowDown: 'brake', KeyS: 'brake',
+  ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
+  Space: 'hand', KeyH: 'horn'
+};
+addEventListener('keydown', e => {
+  const k = keyMap[e.code];
+  if (k) { e.preventDefault(); kb[k] = true; }
+  if (e.code === 'KeyR' && !e.repeat) T.rev = !T.rev;
+});
+addEventListener('keyup', e => {
+  const k = keyMap[e.code];
+  if (k) { e.preventDefault(); kb[k] = false; }
+});
+addEventListener('blur', () => {
+  for (const k of Object.keys(keys)) keys[k] = false;
+  for (const k of Object.keys(kb)) kb[k] = false;
+});
+
+// Close the script/document that were missing from the repository file.
+}
+</script>
+</body>
+</html>
