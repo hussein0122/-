@@ -742,15 +742,47 @@ const sea = new THREE.Mesh(new THREE.PlaneGeometry(4800, 4800).rotateX(-Math.PI 
 
 /* ---- buildings (instanced per cell) ---- */
 function windowTex(lit) {
-  const c = document.createElement('canvas'); c.width = 64; c.height = 128; const x = c.getContext('2d');
-  x.fillStyle = lit ? '#000' : '#f2efe6'; x.fillRect(0, 0, 64, 128);
-  const rs = mulberry32(lit ? 5 : 9);
-  for (let r = 0; r < 8; r++) for (let k = 0; k < 4; k++) {
-    const px = 5 + k * 15, py = 6 + r * 15;
-    if (lit) { if (rs() < .42) { x.fillStyle = rs() < .8 ? '#ffd27a' : '#bfe2ff'; x.fillRect(px, py, 9, 9); } }
-    else { x.fillStyle = '#4b6577'; x.fillRect(px, py, 9, 9); x.fillStyle = '#d9d2bf'; x.fillRect(px - 2, py + 10, 13, 2); }
+  // Procedural Alexandria apartment facade: sun-faded plaster, floor bands,
+  // framed windows, balcony slabs/rails and occasional air-conditioning units.
+  const c = document.createElement('canvas'); c.width = 128; c.height = 256; const x = c.getContext('2d');
+  const rs = mulberry32(lit ? 5147 : 9203);
+  x.fillStyle = lit ? '#111820' : '#e7d9c2'; x.fillRect(0, 0, c.width, c.height);
+  if (!lit) {
+    for (let i = 0; i < 900; i++) {
+      const shade = Math.floor(150 + rs() * 75);
+      x.fillStyle = 'rgba(' + shade + ',' + Math.floor(shade * .96) + ',' + Math.floor(shade * .87) + ',0.10)';
+      x.fillRect(rs() * 128, rs() * 256, 1 + rs() * 4, 1 + rs() * 5);
+    }
   }
-  const t = new THREE.CanvasTexture(c); t.anisotropy = 2; return t;
+  for (let r = 0; r < 8; r++) {
+    const py = 5 + r * 31;
+    if (!lit) {
+      x.fillStyle = '#c8b89e'; x.fillRect(0, py + 27, 128, 3);
+      x.fillStyle = '#f5ead6'; x.fillRect(0, py + 25, 128, 2);
+    }
+    for (let k = 0; k < 3; k++) {
+      const px = 8 + k * 41, ww = 25, wh = 18;
+      if (lit) {
+        const on = rs() < .34;
+        x.fillStyle = on ? (rs() < .8 ? '#ffd68b' : '#c3e6f8') : '#101c29';
+        x.fillRect(px + 3, py + 3, ww - 6, wh - 5);
+        if (on) { x.fillStyle = 'rgba(255,225,155,.24)'; x.fillRect(px + 4, py + 4, 5, wh - 7); }
+      } else {
+        x.fillStyle = '#f7eddb'; x.fillRect(px, py, ww, wh + 3);
+        x.fillStyle = '#7f9aa5'; x.fillRect(px + 3, py + 3, ww - 6, wh - 4);
+        x.fillStyle = '#c8dce0'; x.fillRect(px + 5, py + 4, 4, wh - 6);
+        x.fillStyle = '#d7c8ae'; x.fillRect(px + ww / 2 - 1, py + 2, 2, wh);
+        x.fillStyle = '#f8f0df'; x.fillRect(px - 2, py + wh, ww + 4, 3);
+        // balcony slab and thin metal railing
+        x.fillStyle = '#b5a48b'; x.fillRect(px - 4, py + wh + 3, ww + 8, 3);
+        x.strokeStyle = '#59656a'; x.lineWidth = 1.4; x.beginPath();
+        x.moveTo(px - 2, py + wh + 1); x.lineTo(px + ww + 2, py + wh + 1); x.stroke();
+        for (let j = 0; j < 6; j++) { x.beginPath(); x.moveTo(px - 1 + j * 5, py + wh - 1); x.lineTo(px - 1 + j * 5, py + wh + 2); x.stroke(); }
+        if (rs() < .24) { x.fillStyle = '#d5d0c5'; x.fillRect(px + ww - 1, py + 7, 7, 8); x.fillStyle = '#71818a'; x.fillRect(px + ww, py + 8, 5, 6); }
+      }
+    }
+  }
+  const t = new THREE.CanvasTexture(c); t.anisotropy = 4; t.colorSpace = THREE.SRGBColorSpace || t.colorSpace; return t;
 }
 const wallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, map: windowTex(false), emissive: 0xffffff, emissiveMap: windowTex(true), emissiveIntensity: 0, roughness: 0.88, metalness: 0.02 });
 const roofMat = mat(0x9a948a);
