@@ -722,7 +722,7 @@ const sea = new THREE.Mesh(new THREE.PlaneGeometry(4800, 4800).rotateX(-Math.PI 
 
 /* ---- roads ---- */
 {
-  const asph = Acc(), asph2 = Acc(), grav = Acc(), pave = Acc(), mk = Acc(), mkY = Acc(), rails = Acc();
+  const asph = Acc(), asph2 = Acc(), grav = Acc(), pave = Acc(), mk = Acc(), mkY = Acc(), rails = Acc(), zebra = Acc();
   const hw = { corn: 22, army: 16, inner: 12, tram: 6, raml: 11, conn: 9 };
   ribbon(asph, corn.P, 22, GY); ribbon(asph2, army.P, 16, GY - .02); ribbon(asph2, inner.P, 12, GY - .02);
   ribbon(grav, tram.P, 6, GY - .03);
@@ -731,11 +731,44 @@ const sea = new THREE.Mesh(new THREE.PlaneGeometry(4800, 4800).rotateX(-Math.PI 
   // Crisp road-edge lines and shoulder strips make the coastal boulevard easier to read.
   ribbon(mk, corn.P, .28, GY + .015, -10.8); ribbon(mk, corn.P, .28, GY + .015, 10.8);
   ribbon(mk, corn.P, .35, GY + .01, -10); ribbon(mk, corn.P, .35, GY + .01, 10);
-  ribbon(mkY, corn.P, .45, GY + .012, 0, 2); ribbon(mk, army.P, .4, GY - .005, 0, 2);
+  ribbon(mkY, corn.P, .45, GY + .012, 0, 2);
+  ribbon(mk, army.P, .4, GY + .015, -7.2); ribbon(mk, army.P, .4, GY + .015, 7.2);
+  ribbon(mkY, army.P, .32, GY + .016, 0, 2);
+  ribbon(mk, inner.P, .3, GY + .014, -5.2); ribbon(mk, inner.P, .3, GY + .014, 5.2);
+  ribbon(mkY, inner.P, .26, GY + .016, 0, 2);
+  ribbon(mk, army.P, .4, GY - .005, 0, 2);
   ribbon(rails, tram.P, .2, GY - .015, -1.2); ribbon(rails, tram.P, .2, GY - .015, 1.2);
+  // Procedural zebra crossings at intersections, merged into one draw call.
+  const degree = new Map();
+  const nodeKey = (x, y) => Math.round(x * 10) + ',' + Math.round(y * 10);
+  for (const seg of segs) {
+    for (const pt of [[seg.x1, seg.y1], [seg.x2, seg.y2]]) {
+      const key = nodeKey(pt[0], pt[1]); degree.set(key, (degree.get(key) || 0) + 1);
+    }
+  }
+  for (const seg of segs) {
+    if (seg.kind === 'tram') continue;
+    const dx = seg.x2 - seg.x1, dy = seg.y2 - seg.y1, len = Math.hypot(dx, dy);
+    if (len < 18) continue;
+    const ux = dx / len, uy = dy / len, nx = -uy, ny = ux;
+    const widths = { corn:11, army:8, inner:6, raml:5.5, conn:4.5 };
+    const roadHalf = widths[seg.kind] || 5;
+    for (const end of [0, 1]) {
+      const ex = end ? seg.x2 : seg.x1, ey = end ? seg.y2 : seg.y1;
+      if ((degree.get(nodeKey(ex, ey)) || 0) < 3) continue;
+      const sign = end ? -1 : 1, cx = ex + ux * sign * 8, cy = ey + uy * sign * 8;
+      for (let stripe = -3; stripe <= 3; stripe++) {
+        const ox = ux * stripe * 1.45, oy = uy * stripe * 1.45;
+        ribbon(zebra, [{ x: cx + ox - nx * (roadHalf - .5), y: cy + oy - ny * (roadHalf - .5) },
+                       { x: cx + ox + nx * (roadHalf - .5), y: cy + oy + ny * (roadHalf - .5) }], .62, GY + .035);
+      }
+    }
+  }
   accMesh(asph, mat(0x2a2f35)); accMesh(asph2, mat(0x30353c)); accMesh(grav, mat(0x7a7466));
   accMesh(pave, mat(0xb3ad9c)); accMesh(mk, new THREE.MeshBasicMaterial({ color: 0xe6e0d0 }), false);
-  accMesh(mkY, new THREE.MeshBasicMaterial({ color: 0xf1d36b }), false); accMesh(rails, new THREE.MeshBasicMaterial({ color: 0x55524b }), false);
+  accMesh(mkY, new THREE.MeshBasicMaterial({ color: 0xf1d36b }), false);
+  accMesh(rails, new THREE.MeshBasicMaterial({ color: 0x55524b }), false);
+  accMesh(zebra, new THREE.MeshBasicMaterial({ color: 0xf5f1e5 }), false);
   // sea wall
   const wa = { p: [], i: [], n: 0 };
   for (let k = 0; k < corn.n; k++) {
