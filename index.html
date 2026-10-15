@@ -789,6 +789,7 @@ const roofMat = mat(0x9a948a);
 const bPal = [0xe6d9bd, 0xd9c7a0, 0xf0e6d0, 0xd8b9a0, 0xc9c2b0, 0xe8cfc0, 0xb9c4c2, 0xf2dfb0];
 const unitBox = new THREE.BoxGeometry(1, 1, 1).translate(0, .5, 0);
 const bCells = [];
+const balconyData = [], railData = [], roofTankData = [];
 {
   const m4 = new THREE.Matrix4(), qt = new THREE.Quaternion(), ps = new THREE.Vector3(), sv = new THREE.Vector3(), ax = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
   for (const [key, c] of bGrid) {
@@ -798,11 +799,39 @@ const bCells = [];
       const dcorn = Math.hypot(b.x, b.y), h = 12 + ((b.x * 7.3 + b.y * 3.1) % 1 + 1) % 1 * 26 + (b.t === 2 ? 6 : 0);
       qt.setFromAxisAngle(ax, -b.a); ps.set(b.x, 0, b.y); sv.set(b.w, h, b.d);
       im.setMatrixAt(i, m4.compose(ps, qt, sv)); col.setHex(bPal[(i * 7 + b.t * 3 + Math.floor(b.x)) % bPal.length & 7]); im.setColorAt(i, col); sx += b.x; sz += b.y;
+      // Add balcony slabs and metal rails to a subset of apartment blocks.
+      // Keeping these as instanced meshes preserves mobile performance.
+      if (((Math.floor(Math.abs(b.x * 3 + b.y * 7)) + b.t) % 4) === 0) {
+        const floors = Math.max(1, Math.min(4, Math.floor(h / 8)));
+        const bw = Math.min(5.2, b.w * .58);
+        for (let f = 1; f < floors; f += 2) for (const side of [-1, 1]) {
+          const bz = side * (b.d * .5 + .58), by = f * h / floors;
+          balconyData.push({ x:b.x, y:by, z:b.y, a:b.a, sx:bw, sy:.16, sz:1.12, lx:0, lz:bz });
+          railData.push({ x:b.x, y:by+.16, z:b.y, a:b.a, sx:bw, sy:.58, sz:.09, lx:0, lz:bz+side*.49 });
+        }
+      }
+      if (((Math.floor(Math.abs(b.x * 11 + b.y * 5)) + b.t) % 13) === 0) {
+        roofTankData.push({x:b.x,y:h,z:b.y,a:b.a,sx:1.25,sy:1.35,sz:1.25,lx:b.w*.22,lz:b.d*.15});
+      }
     });
     im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
     im.frustumCulled = false; im.castShadow = true; im.receiveShadow = true; scene.add(im);
     bCells.push({ m: im, x: sx / n, z: sz / n });
   }
+  const addDetails = (items, geometry, material, cast = true) => {
+    if (!items.length) return;
+    const inst = new THREE.InstancedMesh(geometry, material, items.length);
+    const mx = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sca = new THREE.Vector3(), axis = new THREE.Vector3(0,1,0);
+    items.forEach((b,i) => {
+      q.setFromAxisAngle(axis, -b.a);
+      p.set(b.x + b.lx*Math.cos(b.a) - b.lz*Math.sin(b.a), b.y, b.z + b.lx*Math.sin(b.a) + b.lz*Math.cos(b.a));
+      sca.set(b.sx,b.sy,b.sz); inst.setMatrixAt(i,mx.compose(p,q,sca));
+    });
+    inst.instanceMatrix.needsUpdate = true; inst.frustumCulled = false; inst.castShadow = cast; inst.receiveShadow = true; scene.add(inst);
+  };
+  addDetails(balconyData, unitBox, mat(0xb6a58c));
+  addDetails(railData, unitBox, mat(0x555d62));
+  addDetails(roofTankData, new THREE.CylinderGeometry(.42,.5,1,8).translate(0,.5,0), mat(0x7f8b8c));
 }
 /* ===================== props: palms + street lamps ===================== */
 const M4 = new THREE.Matrix4(), QT = new THREE.Quaternion(), PS = new THREE.Vector3(), SV = new THREE.Vector3(), YA = new THREE.Vector3(0, 1, 0), CL = new THREE.Color();
